@@ -1,5 +1,5 @@
 self.defaults = {
-  'embedded': false,
+  'embedded': true,
   'auto-fullscreen': false,
   'auto-rules': [],
   'font-size': 15,
@@ -163,6 +163,13 @@ html[data-page-url*="example.com"] {
   './plugins/tts/core.mjs': true,
   './plugins/chapters/core.mjs': true,
   './plugins/multiple-articles/core.mjs': true,
-  './plugins/qr-code/core.mjs': true
+  './plugins/qr-code/core.mjs': true,
+  'translate-auto': false,
+  'translate-hosts': [],
+  'translate-provider': 'google',
+  'translate-api-name': '',
+  'translate-api-base-url': '',
+  'translate-api-key': '',
+  'translate-api-model': ''
 };
 

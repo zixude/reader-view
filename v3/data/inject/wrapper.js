@@ -489,6 +489,24 @@ try {
           document.documentElement.dataset.mode = prefs.mode;
           document.title = title;
 
+          self.translateEngine?.disable();
+          self.translateEngine = new self.TranslateEngine({
+            doc: document,
+            view: window,
+            prefs,
+            url: article.url,
+            notify: message => chrome.runtime.sendMessage({
+              cmd: 'notify',
+              msg: message
+            }),
+            request: (url, options) => chrome.runtime.sendMessage({
+              cmd: 'translate-fetch',
+              url,
+              options
+            })
+          });
+          self.translateEngine.enable();
+
           style.clean();
           chrome.runtime.sendMessage({
             cmd: 'converted'

@@ -31,6 +31,8 @@ input[type=button] {
 }
 input[type=number],
 input[type=text],
+input[type=url],
+input[type=password],
 textarea {
   border: solid 1px var(--bd);
   padding: 2px 5px;
@@ -128,6 +130,23 @@ a:visited {
 
 .hidden {
   display: none;
+}
+
+.translate-sources {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+#translate-api-fields {
+  grid-template-columns: 80px 200px;
+  justify-content: start;
+  margin: 2px 0 6px 24px;
+}
+
+#translate-api-fields input {
+  box-sizing: border-box;
+  width: 200px;
 }
 
 @supports (-webkit-hyphens: none) and (not (-moz-appearance: none)) {

@@ -44,6 +44,7 @@ ready().then(() => chrome.storage.local.get({
   if (prefs['./plugins/qr-code/core.mjs']) {
     import('./plugins/qr-code/core.mjs').then(o => o.enable());
   }
+  import('./plugins/translate/core.mjs').then(o => o.enable());
 }));
 chrome.storage.onChanged.addListener(ps => {
   // AMO does not like dynamic imports

@@ -128,6 +128,30 @@
     <label for="./plugins/qr-code/core.mjs">Use "qr-code" plugin</label>
   </div>
 
+  <h3>Translate Module</h3>
+  <div id="translate-options">
+    <div class="box-1">
+      <input type="checkbox" id="translate-auto">
+      <label for="translate-auto">Auto translate</label>
+    </div>
+    <textarea id="translate-hosts" rows="3" placeholder="Comma-separated hostnames (e.g. ft.com, bbc.com, cnn.com)"></textarea>
+    <div class="translate-sources">
+      <label><input type="radio" name="translate-provider" value="google"> Google Translate</label>
+      <label><input type="radio" name="translate-provider" value="api"> API Translate</label>
+      <div id="translate-api-fields" class="box-2" hidden>
+        <label for="translate-api-name">Name</label>
+        <input type="text" id="translate-api-name">
+        <label for="translate-api-base-url">Base URL</label>
+        <input type="url" id="translate-api-base-url" placeholder="https://api.example.com/v1">
+        <label for="translate-api-key">API Key</label>
+        <input type="password" id="translate-api-key">
+        <label for="translate-api-model">Model</label>
+        <input type="text" id="translate-api-model">
+      </div>
+      <label title="Not implemented"><input type="radio" name="translate-provider" value="agent" disabled> Agent Translate</label>
+    </div>
+  </div>
+
   <h3>Misc</h3>
   <div class="box-1">
     <input type="checkbox" id="faqs">

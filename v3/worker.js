@@ -58,6 +58,39 @@ const notify = async e => {
   }
 };
 
+const translateFetch = async request => {
+  const prefs = await chrome.storage.local.get({
+    'translate-provider': defaults['translate-provider'],
+    'translate-api-base-url': defaults['translate-api-base-url']
+  });
+  const url = new URL(request.url);
+  let allowed = false;
+
+  if (prefs['translate-provider'] === 'google') {
+    allowed = url.origin === 'https://clients5.google.com' && url.pathname === '/translate_a/t';
+  }
+  else if (prefs['translate-provider'] === 'api' && prefs['translate-api-base-url']) {
+    const base = prefs['translate-api-base-url'].replace(/\/+$/, '');
+    const endpoint = base.endsWith('/chat/completions') ? base : base + '/chat/completions';
+    allowed = url.href === new URL(endpoint).href;
+  }
+  if (allowed === false) {
+    return {ok: false, status: 403};
+  }
+
+  const response = await fetch(url, request.options);
+  let data;
+  try {
+    data = await response.json();
+  }
+  catch (e) {}
+  return {
+    ok: response.ok,
+    status: response.status,
+    data
+  };
+};
+
 const onClicked = async (tab, embedded = false) => {
   const root = chrome.runtime.getURL('');
   // Brave does not return "tab.url" when tab is reader view
@@ -111,6 +144,11 @@ const onClicked = async (tab, embedded = false) => {
         target,
         injectImmediately: true,
         files: ['/data/config.js']
+      });
+      await chrome.scripting.executeScript({
+        target,
+        injectImmediately: true,
+        files: ['/data/reader/plugins/translate/engine.js']
       });
       await chrome.scripting.executeScript({
         target,
@@ -198,6 +236,13 @@ const onMessage = (request, sender, response) => {
   }
   else if (request.cmd === 'notify') {
     notify(request.msg);
+  }
+  else if (request.cmd === 'translate-fetch') {
+    translateFetch(request).then(response).catch(() => response({
+      ok: false,
+      status: 0
+    }));
+    return true;
   }
   else if (request.cmd === 'read-data') {
     const id = request.id || (sender.tab ? sender.tab.id : '');

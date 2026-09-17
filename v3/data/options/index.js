@@ -87,11 +87,47 @@ chrome.permissions.contains({
   }
 });
 
+const translateProvider = () => document.querySelector('[name="translate-provider"]:checked')?.value || 'google';
+const updateTranslateFields = () => {
+  document.getElementById('translate-api-fields').hidden = translateProvider() !== 'api';
+};
+for (const radio of document.querySelectorAll('[name="translate-provider"]')) {
+  radio.addEventListener('change', updateTranslateFields);
+}
+
+const normalizeTranslateHost = value => {
+  try {
+    const url = new URL(value.includes('://') ? value : 'https://' + value);
+    return url.hostname.toLowerCase().replace(/^www\./, '');
+  }
+  catch (e) {
+    return '';
+  }
+};
+
 function save() {
   const json = document.getElementById('auto-rules').value.split(/\s*,\s*/).filter((s, i, l) => {
     return s && l.indexOf(s) === i;
   });
   document.getElementById('auto-rules').value = json.join(', ');
+
+  const translateHosts = document.getElementById('translate-hosts').value.split(/\s*,\s*/)
+    .map(normalizeTranslateHost).filter((s, i, l) => s && l.indexOf(s) === i);
+  document.getElementById('translate-hosts').value = translateHosts.join(', ');
+  const provider = translateProvider();
+  const baseUrl = document.getElementById('translate-api-base-url').value.trim();
+
+  if (provider === 'api' && baseUrl) {
+    try {
+      const url = new URL(baseUrl);
+      if (url.protocol === 'https:' || url.protocol === 'http:') {
+        chrome.permissions.request({
+          origins: [url.origin + '/*']
+        }, () => void chrome.runtime.lastError);
+      }
+    }
+    catch (e) {}
+  }
 
   let actions = [];
   try {
@@ -160,6 +196,14 @@ function save() {
     'context-open-in-reader-view-bg': document.getElementById('context-open-in-reader-view-bg').checked,
     'context-switch-to-reader-view': document.getElementById('context-switch-to-reader-view').checked,
 
+    'translate-auto': document.getElementById('translate-auto').checked,
+    'translate-hosts': translateHosts,
+    'translate-provider': provider,
+    'translate-api-name': document.getElementById('translate-api-name').value.trim(),
+    'translate-api-base-url': baseUrl.replace(/\/+$/, ''),
+    'translate-api-key': document.getElementById('translate-api-key').value.trim(),
+    'translate-api-model': document.getElementById('translate-api-model').value.trim(),
+
     'printing-button': document.getElementById('printing-button').checked,
     'screenshot-button': document.getElementById('screenshot-button').checked,
     'note-button': document.getElementById('note-button').checked,
@@ -196,6 +240,17 @@ function save() {
 function restore() {
   document.getElementById('auto-fullscreen').checked = config.prefs['auto-fullscreen'];
   document.getElementById('auto-rules').value = config.prefs['auto-rules'].join(', ');
+
+  document.getElementById('translate-auto').checked = config.prefs['translate-auto'];
+  document.getElementById('translate-hosts').value = config.prefs['translate-hosts'].join(', ');
+  const provider = config.prefs['translate-provider'] === 'agent' ? 'google' : config.prefs['translate-provider'];
+  const radio = document.querySelector(`[name="translate-provider"][value="${provider}"]`);
+  (radio || document.querySelector('[name="translate-provider"][value="google"]')).checked = true;
+  document.getElementById('translate-api-name').value = config.prefs['translate-api-name'];
+  document.getElementById('translate-api-base-url').value = config.prefs['translate-api-base-url'];
+  document.getElementById('translate-api-key').value = config.prefs['translate-api-key'];
+  document.getElementById('translate-api-model').value = config.prefs['translate-api-model'];
+  updateTranslateFields();
 
   document.getElementById('embedded').checked = config.prefs['embedded'];
   document.getElementById('top-style').value = config.prefs['top-css'];
