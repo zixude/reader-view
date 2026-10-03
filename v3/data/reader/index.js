@@ -24,6 +24,9 @@
 let article;
 let highlight;
 
+// Firefox
+CSS.px ??= value => `${value}px`;
+
 const args = new URLSearchParams(location.search);
 
 // Relax restrictions on remote access (#175)
@@ -63,6 +66,26 @@ const remote = () => {
     }).then(() => '')
   ]).then(msg => msg && console.info(msg));
 };
+
+const askForRemoteAccess = async () =>  {
+  if (askForRemoteAccess.shown) {
+    return;
+  }
+  askForRemoteAccess.shown = true;
+
+  const prefs = await chrome.storage.local.get({
+    'warn-on-remote-resources': true
+  });
+  if (prefs['warn-on-remote-resources']) {
+    chrome.permissions.contains({
+      origins: ['*://*/*']
+    }, granted => {
+      if (granted === false) {
+        tips.show(1, false);
+      }
+    });
+  }
+}
 
 // add script
 const add = (src, o) => new Promise((resolve, reject) => {
@@ -110,6 +133,9 @@ const scrollbar = {
 // exit by passing ESC, exit after link is opened in the Reader view, exit after auto reader view
 const nav = {
   back(forced = false) {
+
+      console.log(new Error().stack);
+
     if (location.protocol.startsWith('safari')) {
       chrome.runtime.sendMessage({
         cmd: 'closed'
@@ -147,7 +173,11 @@ const favicon = article => {
   else if (article.icon && article.icon.startsWith('data:')) {
     next(article.icon);
   }
-  else if (chrome.runtime.getManifest()['manifest_version'] === 3 && location.protocol.startsWith('safari') === false) {
+  else if (
+    chrome.runtime.getManifest()['manifest_version'] === 3 &&
+    location.protocol.startsWith('safari') === false &&
+    location.protocol.startsWith('moz-extension') === false
+  ) {
     chrome.permissions.contains({
       permissions: ['favicon']
     }, granted => {
@@ -185,6 +215,101 @@ const download = (href, type, convert = false) => {
     download: article.title.replace( /[<>:"/\\|?*]+/g, '' ) + '.' + extension
   });
   link.dispatchEvent(new MouseEvent('click'));
+};
+
+/* save images inside the saved HTML (save button) */
+const img2data = src => new Promise((resolve, reject) => {
+  const image = new Image();
+  image.crossOrigin = 'anonymous';
+  image.onload = () => {
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = image.naturalWidth;
+      canvas.height = image.naturalHeight;
+      canvas.getContext('2d').drawImage(image, 0, 0);
+      resolve(canvas.width * canvas.height > 1000000 ?
+        canvas.toDataURL('image/jpeg', 0.92) :
+        canvas.toDataURL('image/png'));
+    }
+    catch (e) {
+      reject(e);
+    }
+  };
+  image.onerror = () => {
+    askForRemoteAccess();
+    reject(new Error('Cannot load image'));
+  };
+  image.src = src;
+});
+
+/* convert images of the cloned document to local data URIs */
+const saveImagesLocally = async dom => {
+  const href = a => {
+    try {
+      return new URL(a, article.url).href;
+    }
+    catch (e) {
+      return a;
+    }
+  };
+  const domImgs = [...dom.querySelectorAll('img')].filter(img => {
+    const src = img.getAttribute('src');
+    return src && src.startsWith('data:') === false;
+  });
+
+  if (domImgs.length === 0) {
+    return;
+  }
+
+  const span = document.getElementById('save-button');
+
+  let replaced = 0;
+  let processed = 0;
+
+  span.dataset.busy = 'true';
+  span.dataset.count = '0/' + domImgs.length;
+  try {
+    for (const img of domImgs) {
+      const src = img.getAttribute('src');
+      const url = href(src);
+      let data;
+      try {
+        data = await img2data(url);
+      }
+      catch (e) {
+        console.warn('cannot inline image', url, e);
+      }
+      if (data) {
+        img.src = data;
+        img.setAttribute('loading', 'eager');
+        img.removeAttribute('srcset');
+        img.removeAttribute('sizes');
+        replaced += 1;
+      }
+      else {
+        img.setAttribute('loading', 'eager');
+      }
+      span.dataset.count = (++processed) + '/' + domImgs.length;
+    }
+    window.notify(chrome.i18n.getMessage('rd_save_images') +
+      ` (${replaced}/${domImgs.length})`, domImgs.length > replaced ? 'error' : 'info');
+  }
+  finally {
+    span.removeAttribute('data-busy');
+    span.removeAttribute('data-count');
+  }
+};
+
+const decideImages = async () => {
+  if (config.prefs['save-images-locally-asked'] === false) {
+    const b = confirm(chrome.i18n.getMessage('rd_save_images_ask'));
+    chrome.storage.local.set({
+      'save-images-locally': b,
+      'save-images-locally-asked': true
+    });
+    config.prefs['save-images-locally'] = b;
+    config.prefs['save-images-locally-asked'] = true;
+  }
 };
 
 const update = {
@@ -234,6 +359,20 @@ const update = {
       span.classList.add('icon-picture-false');
       span.classList.remove('icon-picture-true');
     }
+  },
+  brightness: () => {
+    const p = Math.max(30, Math.min(150, Number(config.prefs.brightness) || 100));
+    // page-level dimming (toolbars included); the root element keeps
+    // position:fixed elements (speech panel, guide) anchored to the viewport
+    document.documentElement.style.filter = p === 100 ? '' : `brightness(${p}%)`;
+    const input = document.getElementById('brightness-range');
+    if (input) {
+      input.value = p;
+    }
+    const display = document.querySelector('#brightness-utils [data-id=display]');
+    if (display) {
+      display.textContent = p + '%';
+    }
   }
 };
 
@@ -246,6 +385,17 @@ fontUtils.addEventListener('focus', () => {
 const imageUtils = document.querySelector('#image-utils');
 imageUtils.addEventListener('focus', () => {
   imageUtils.dataset.opening = false;
+});
+const brightnessUtils = document.querySelector('#brightness-utils');
+brightnessUtils.addEventListener('focus', () => {
+  brightnessUtils.dataset.opening = false;
+});
+brightnessUtils.addEventListener('input', e => {
+  if (e.target.id === 'brightness-range') {
+    chrome.storage.local.set({
+      brightness: Number(e.target.value)
+    });
+  }
 });
 
 const shortcuts = new Map();
@@ -385,7 +535,10 @@ shortcuts.render = (spans = shortcuts.keys()) => {
   span.title = chrome.i18n.getMessage('rd_save');
   span.classList.add('icon-save', 'hidden');
   span.id = 'save-button';
-  span.onclick = e => {
+  span.onclick = async e => {
+    if (span.dataset.busy === 'true') {
+      return;
+    }
     const next = (href, type, convert) => {
       // only for mouse clicks
       const k = e instanceof KeyboardEvent ||
@@ -424,6 +577,13 @@ shortcuts.render = (spans = shortcuts.keys()) => {
       });
     }
     else {
+      // one-time question about saving images locally
+      await decideImages();
+
+      if (config.prefs['save-images-locally']) {
+        await saveImagesLocally(dom);
+      }
+
       // add title
       const t = document.createElement('title');
       t.textContent = document.title;
@@ -727,6 +887,15 @@ document.addEventListener('click', e => {
     imageUtils.dataset.opening = true;
     imageUtils.focus();
   }
+  else if (cmd === 'open-brightness-utils') {
+    brightnessUtils.dataset.opening = true;
+    brightnessUtils.focus();
+  }
+  else if (cmd === 'brightness-reset') {
+    chrome.storage.local.set({
+      brightness: 100
+    });
+  }
   else if (cmd === 'image-increase' || cmd === 'image-decrease') {
     [...iframe.contentDocument.images].forEach(img => {
       const {width} = img.getBoundingClientRect();
@@ -842,6 +1011,18 @@ const render = async () => {
     --fg: ${gcs.getPropertyValue('--color-mode-nord-dark-color')};
     --bd: ${gcs.getPropertyValue('--color-mode-nord-dark-color')};
     --bg: ${gcs.getPropertyValue('--color-mode-nord-dark-bg')};
+  }
+  html[data-mode="black-dark"] {
+    color-scheme: dark;
+    --fg: ${gcs.getPropertyValue('--color-mode-black-dark-color')};
+    --bd: ${gcs.getPropertyValue('--color-mode-black-dark-color')};
+    --bg: ${gcs.getPropertyValue('--color-mode-black-dark-bg')};
+  }
+  html[data-mode="white-light"] {
+    color-scheme: light;
+    --fg: ${gcs.getPropertyValue('--color-mode-white-light-color')};
+    --bd: ${gcs.getPropertyValue('--color-mode-white-light-color')};
+    --bg: ${gcs.getPropertyValue('--color-mode-white-light-bg')};
   }`;
   iframe.contentDocument.documentElement.dataset.mode = document.body.dataset.mode;
 
@@ -954,27 +1135,11 @@ const render = async () => {
   iframe.contentDocument.head.appendChild(t);
 
   // remote image loading
-  {
-    let shown = false;
-    iframe.contentWindow.addEventListener('error', e => {
-      if (shown === false && e.target.tagName === 'IMG' && e.target.src.startsWith('http')) {
-        chrome.storage.local.get({
-          'warn-on-remote-resources': true
-        }, prefs => {
-          if (prefs['warn-on-remote-resources']) {
-            chrome.permissions.contains({
-              origins: ['*://*/*']
-            }, granted => {
-              if (granted === false) {
-                tips.show(1, false);
-              }
-            });
-          }
-          shown = true;
-        });
-      }
-    }, true);
-  }
+  iframe.contentWindow.addEventListener('error', e => {
+    if (e.target.tagName === 'IMG' && e.target.src.startsWith('http')) {
+      askForRemoteAccess();
+    }
+  }, true);
 
   // fix relative links;
   const es = [...iframe.contentDocument.querySelectorAll('[src^="//"]')];
@@ -1186,6 +1351,9 @@ config.onChanged.push(ps => {
   if (ps['show-images']) {
     update.images();
   }
+  if (ps['brightness']) {
+    update.brightness();
+  }
   if (ps['mode']) {
     document.body.dataset.mode = config.prefs.mode;
   }
@@ -1260,6 +1428,7 @@ Promise.all([
     }
     update.images();
     update.async();
+    update.brightness();
 
     styles.top.textContent = config.prefs['top-css'];
     document.documentElement.appendChild(styles.top);

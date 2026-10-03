@@ -468,6 +468,18 @@ try {
     --fg: #e5e9f0;
     --bd: #e5e9f0;
     --bg: #2e3440;
+  }
+  html[data-mode="black-dark"] {
+    color-scheme: dark;
+    --fg: #c0c0c0;
+    --bd: #c0c0c0;
+    --bg: #000;
+  }
+  html[data-mode="white-light"] {
+    color-scheme: light;
+    --fg: #000;
+    --bd: #000;
+    --bg: #fff;
   }`;
           document.head.replaceWith(head);
           const body = dom.querySelector('body');
@@ -488,6 +500,27 @@ try {
           document.body.replaceWith(body);
           document.documentElement.dataset.mode = prefs.mode;
           document.title = title;
+
+          // apply and keep in sync with the brightness pref (simple mode)
+          const brightness = p => {
+            p = Math.max(30, Math.min(150, Number(p) || 100));
+            let e = document.getElementById('rv-brightness');
+            if (!e) {
+              e = document.createElement('style');
+              e.id = 'rv-brightness';
+              document.head.appendChild(e);
+            }
+            e.textContent = p >= 100 ? '' : `html {
+  filter: brightness(${p}%);
+}
+@media print {
+  html {
+    filter: none !important;
+  }
+}`;
+          };
+          brightness(prefs.brightness);
+          config.onChanged.push(ps => ps.brightness && brightness(ps.brightness.newValue));
 
           self.translateEngine?.disable();
           self.translateEngine = new self.TranslateEngine({
