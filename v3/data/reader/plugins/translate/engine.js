@@ -505,48 +505,94 @@
       style.id = 'translate-styling';
       style.textContent = `
         #translate-control {
+          -webkit-appearance: none;
+          appearance: none;
           position: fixed;
           z-index: 2147483647;
-          top: 0;
-          right: 0;
-          width: 144px;
+          top: env(safe-area-inset-top, 0px);
+          right: env(safe-area-inset-right, 0px);
+          width: 160px;
           height: 80px;
           display: grid;
           place-items: center;
-          opacity: 0;
-          transition: opacity 120ms ease-in-out;
-        }
-        #translate-control:hover,
-        #translate-control:focus-within {
-          opacity: 1;
-        }
-        #translate-control button {
-          -webkit-appearance: none;
-          appearance: none;
           border: 0;
-          border-radius: 4px;
-          padding: 8px 12px;
-          color: color-mix(in srgb, var(--fg) 72%, transparent);
-          background: rgba(255, 255, 255, 0.08);
+          padding: 0;
+          color: var(--fg);
+          background: transparent;
           box-shadow: none;
           cursor: pointer;
           font: inherit;
         }
+        #translate-control span {
+          pointer-events: none;
+          opacity: 0;
+          transition: opacity 120ms ease-in-out;
+        }
+        @media (hover: hover) and (pointer: fine) {
+          #translate-control:hover span,
+          #translate-control:focus-visible span {
+            opacity: 1;
+          }
+        }
+        @media (hover: none) and (pointer: coarse) {
+          #translate-control {
+            width: 120px;
+            height: 60px;
+            -webkit-touch-callout: none;
+            user-select: none;
+            touch-action: manipulation;
+          }
+        }
       `;
       this.controlDocument.head.appendChild(style);
 
-      this.control = this.controlDocument.createElement('div');
+      this.control = this.controlDocument.createElement('button');
       this.control.id = 'translate-control';
-      const button = this.controlDocument.createElement('button');
-      button.type = 'button';
-      button.textContent = 'translate';
-      button.addEventListener('click', event => {
+      this.control.type = 'button';
+      this.control.setAttribute('aria-label', 'translate');
+      const label = this.controlDocument.createElement('span');
+      label.textContent = 'translate';
+      this.control.appendChild(label);
+
+      this.touchControl = this.view.matchMedia('(hover: none) and (pointer: coarse)').matches;
+      this.longPressTriggered = false;
+      const cancelLongPress = () => {
+        this.view.clearTimeout(this.longPressTimer);
+      };
+      this.control.addEventListener('pointerdown', event => {
+        if (this.touchControl === false || event.pointerType === 'mouse') {
+          return;
+        }
+        this.longPressTriggered = false;
+        cancelLongPress();
+        this.longPressTimer = this.view.setTimeout(() => {
+          this.longPressTriggered = true;
+          chrome.runtime.sendMessage({
+            cmd: 'open-options'
+          });
+          this.control.blur();
+        }, 1000);
+      });
+      this.control.addEventListener('pointerup', cancelLongPress);
+      this.control.addEventListener('pointercancel', cancelLongPress);
+      this.control.addEventListener('pointerleave', cancelLongPress);
+      this.control.addEventListener('contextmenu', event => {
+        if (this.touchControl) {
+          event.preventDefault();
+        }
+      });
+      this.control.addEventListener('click', event => {
+        if (this.longPressTriggered) {
+          event.preventDefault();
+          event.stopPropagation();
+          this.longPressTriggered = false;
+          return;
+        }
         if (event.detail) {
-          button.blur();
+          this.control.blur();
         }
         this.start();
       });
-      this.control.appendChild(button);
       this.controlDocument.body.appendChild(this.control);
     }
 
@@ -562,6 +608,7 @@
       this.pending.length = 0;
       this.queued.clear();
       this.view.clearTimeout(this.drainTimer);
+      this.view.clearTimeout(this.longPressTimer);
       this.observer?.disconnect();
       this.#detachScroll();
       this.control?.remove();

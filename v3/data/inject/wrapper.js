@@ -418,7 +418,7 @@ try {
             body {
               font-size:  ${prefs['font-size']}px;
               font-family: ${prefs.font} !important;
-              width: ${prefs.width ? prefs.width + 'px' : 'calc(100vw - 50px)'};
+              width: ${prefs.width ? `min(calc(100% - 2rem), ${prefs.width}px)` : 'calc(100vw - 50px)'};
             }
           ` + prefs['user-css'];
           head.querySelector('#ftp').textContent = `html[data-mode="light"] {

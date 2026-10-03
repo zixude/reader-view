@@ -237,6 +237,11 @@ const onMessage = (request, sender, response) => {
   else if (request.cmd === 'notify') {
     notify(request.msg);
   }
+  else if (request.cmd === 'open-options') {
+    chrome.tabs.create({
+      url: chrome.runtime.getURL('/data/options/index.html')
+    }).catch(notify);
+  }
   else if (request.cmd === 'translate-fetch') {
     translateFetch(request).then(response).catch(() => response({
       ok: false,
